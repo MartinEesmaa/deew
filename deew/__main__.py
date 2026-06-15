@@ -42,7 +42,7 @@ sys.path.append('.')
 from deew.bitrates import allowed_bitrates
 from deew.logos import logos
 from deew.messages import error_messages
-from deew.xml_base import xml_ac4_base, xml_dd_ddp_base, xml_thd_base
+from deew.xml_base import xml_ac4_base_new, xml_ac4_base, xml_dd_ddp_base, xml_thd_base
 
 prog_name = 'deew'
 prog_version = '3.2.2'
@@ -582,6 +582,10 @@ def main() -> None:
     for i in config['dee_path'], config['ffmpeg_path'], config['ffprobe_path']:
         if not shutil.which(i): print_exit('binary_exist', i)
 
+    simplens.dee_version = parse_version_string([config['dee_path']])
+    simplens.ffmpeg_version = parse_version_string([config['ffmpeg_path'], '-version'])
+    simplens.ffprobe_version = parse_version_string([config['ffprobe_path'], '-version'])
+
     with open(shutil.which(config['dee_path']), 'rb') as fd:
         simplens.dee_is_exe = fd.read(2) == b'\x4d\x5a'
     simplens.is_nonnative_exe = simplens.dee_is_exe and platform.system() != 'Windows'
@@ -739,7 +743,10 @@ def main() -> None:
                 bitrate = find_closest_allowed(bitrate, allowed_bitrates['ddp_71_combined'])
     elif aformat == 'ac4':
         if not bitrate: bitrate = config['default_bitrates']['ac4_2_0']
-        bitrate = find_closest_allowed(bitrate, allowed_bitrates['ac4_20'])
+        if version.parse(simplens.dee_version.replace('-master', '')) < version.parse('5.3.0'):
+            bitrate = find_closest_allowed(bitrate, allowed_bitrates['ac4_20'])
+        else:
+            bitrate = find_closest_allowed(bitrate, allowed_bitrates['ac4_20_new'])
 
     if args.output:
         createdir(os.path.abspath(args.output))
@@ -768,7 +775,10 @@ def main() -> None:
         xml_base['job_config']['filter']['audio']['pcm_to_ddp']['drc']['rf_mode_drc_profile'] = args.drc
         xml_base['job_config']['filter']['audio']['pcm_to_ddp']['custom_dialnorm'] = args.dialnorm
     elif aformat in ['ac4']:
-        xml_base = xmltodict.parse(xml_ac4_base)
+        if version.parse(simplens.dee_version.replace('-master', '')) < version.parse('5.3.0'):
+            xml_base = xmltodict.parse(xml_ac4_base)
+        else:
+            xml_base = xmltodict.parse(xml_ac4_base_new)
         xml_base['job_config']['output']['ac4']['storage']['local']['path'] = wpc(output, quote=True)
         xml_base['job_config']['filter']['audio']['encode_to_ims_ac4']['data_rate'] = bitrate
         xml_base['job_config']['filter']['audio']['encode_to_ims_ac4']['drc']['ddp_drc_profile'] = args.drc
@@ -786,10 +796,6 @@ def main() -> None:
         xml_base['job_config']['filter']['audio']['encode_to_dthd']['custom_dialnorm'] = args.dialnorm
     xml_base['job_config']['input']['audio']['wav']['storage']['local']['path'] = wpc(config['temp_path'], quote=True)
     xml_base['job_config']['misc']['temp_dir']['path'] = wpc(config['temp_path'], quote=True)
-
-    simplens.dee_version = parse_version_string([config['dee_path']])
-    simplens.ffmpeg_version = parse_version_string([config['ffmpeg_path'], '-version'])
-    simplens.ffprobe_version = parse_version_string([config['ffprobe_path'], '-version'])
 
     if not all(x is False for x in config["summary_sections"].values()):
         summary = Table(title='Encoding summary', title_style='not italic bold magenta', show_header=False)
